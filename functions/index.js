@@ -60,6 +60,12 @@ function generateStubOptions(level0, path, maxOptions) {
 // -------- OPENAI CALL --------
 async function fetchLLM(level0, path, maxOptions) {
   const apiKey = process.env.OPENAI_API_KEY;
+  // Safe fingerprint (does NOT reveal full key)
+  console.log("[env] key_fingerprint", {
+    prefix: (apiKey || "").slice(0, 7),
+    suffix: (apiKey || "").slice(-4),
+    len: (apiKey || "").length
+  });
   if (!apiKey) return null;
 
   const target = Math.min(maxOptions || DEFAULT_TARGET_OPTIONS, DEFAULT_TARGET_OPTIONS);
