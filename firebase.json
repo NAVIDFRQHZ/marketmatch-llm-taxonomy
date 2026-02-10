@@ -6,7 +6,10 @@
     "rewrites": [{ "source": "/api/**", "function": "api" }]
   },
   "emulators": {
-    "functions": { "port": 5001 },
-    "hosting": { "port": 5000 }
+    "hosting": { "host": "127.0.0.1", "port": 5050 },
+    "functions": { "host": "127.0.0.1", "port": 5001 },
+    "ui": { "host": "127.0.0.1", "port": 4000 },
+    "hub": { "host": "127.0.0.1", "port": 4400 },
+    "logging": { "host": "127.0.0.1", "port": 4500 }
   }
 }
