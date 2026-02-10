@@ -76,8 +76,10 @@ Schema:
   const payload = JSON.stringify({
     model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
     input: prompt,
-    max_output_tokens: 800,
-    temperature: 0.4
+    // Force JSON-only output in Responses API
+    text: { format: { type: "json_object" } },
+    max_output_tokens: 900,
+    temperature: 0.3
   });
 
   const https = require("https");
@@ -99,7 +101,7 @@ Schema:
         res.on("end", () => {
           if (res.statusCode < 200 || res.statusCode >= 300) {
             console.log("OpenAI HTTP error", body);
-            return resolve(null);
+            return resolve({ __openai_error: body.slice(0, 400) });
           }
           try {
             resolve(JSON.parse(body));
@@ -117,6 +119,18 @@ Schema:
   });
 
   if (!data) return null;
+  // If we captured an OpenAI error body, surface it safely
+  if (data.__openai_error) {
+    return {
+      mode: "stub",
+      step: { level0, path_labels: path.map(p => p.label) },
+      options: generateStubOptions(level0, path, maxOptions).options,
+      buckets: generateStubOptions(level0, path, maxOptions).buckets,
+      can_confirm_here: false,
+      confirm_reason: "OpenAI error (see warnings).",
+      warnings: ["OpenAI request failed.", data.__openai_error]
+    };
+  }
 
   const text = (data.output || [])
     .flatMap(o => o.content || [])
