@@ -253,10 +253,7 @@ async function getNextOptions({ level0, path, maxOptions }) {
   }
 }
 
-exports.api = functions
-  .runWith({ secrets: ['OPENAI_API_KEY', 'OPENAI_MODEL'] })
-  .https
-  .onRequest(async (req, res) => {
+exports.api = functions.https.onRequest(async (req, res) => {
     const t0 = now();
 
     res.set('Access-Control-Allow-Origin', '*');
