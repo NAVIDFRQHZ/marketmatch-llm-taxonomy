@@ -52,6 +52,11 @@ function stub(level0,path){
   };
 }
 
+// Compatibility alias (some code paths call this name)
+function generateStubOptions(level0, path, maxOptions) {
+  return stub(level0, path);
+}
+
 // -------- OPENAI CALL --------
 async function fetchLLM(level0, path, maxOptions) {
   const apiKey = process.env.OPENAI_API_KEY;
