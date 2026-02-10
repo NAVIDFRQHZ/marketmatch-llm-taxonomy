@@ -177,7 +177,54 @@ async function fetchOpenAiOptions({ level0, path, maxOptions }) {
       input,
       temperature: 0.35,
       max_output_tokens: 900,
-      response_format: {
+      text: {
+        format: {
+          type: "json_schema",
+          json_schema: {
+            name: "taxonomy_options",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                options: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      id: { type: "string" },
+                      label: { type: "string" },
+                      description: { type: "string" },
+                      split_dimension: { type: "string" },
+                      confidence: { type: "number" }
+                    },
+                    required: ["id","label","description","split_dimension","confidence"]
+                  }
+                },
+                buckets: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      label: { type: "string" },
+                      option_ids: { type: "array", items: { type: "string" } }
+                    },
+                    required: ["label","option_ids"]
+                  }
+                },
+                can_confirm_here: { type: "boolean" },
+                confirm_reason: { type: "string" },
+                warnings: { type: "array", items: { type: "string" } }
+              },
+              required: ["options","buckets","can_confirm_here","confirm_reason","warnings"]
+            }
+          }
+        }
+      },
+      /* response_format removed (Responses API uses text.format) */
+      response_format_removed: {
         type: "json_schema",
         json_schema: {
           name: "taxonomy_options",
