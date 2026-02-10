@@ -35,7 +35,7 @@ function formatLevel0(level0) {
   }
 }
 
-function stub(level0, path, maxOptions) {
+function stub(level0, path, maxOptions, extraWarnings = []) {
   const depth = path.length + 1;
   const n = Math.min(maxOptions, 18);
   const options = Array.from({ length: n }, (_, i) => ({
@@ -52,8 +52,11 @@ function stub(level0, path, maxOptions) {
     options,
     buckets: [{ label: 'All options', option_ids: options.map(o => o.id) }],
     can_confirm_here: path.length >= 2,
-    confirm_reason: path.length >= 2 ? 'Meaningful depth reached (stub).' : 'Keep drilling down (stub).',
-    warnings: ['Stub mode (no OpenAI key).']
+    confirm_reason: path.length >= 2 ? 'Meaningful depth reached.' : 'Keep drilling down.',
+    warnings: [
+      ...(extraWarnings || []),
+      'Stub fallback active.'
+    ]
   };
 }
 
@@ -106,9 +109,15 @@ function normalizeBuckets(payload, options) {
   return sanitized;
 }
 
+/**
+ * Calls the OpenAI Responses API (recommended for new projects). :contentReference[oaicite:0]{index=0}
+ * Model default can be swapped to gpt-4o-mini if needed. :contentReference[oaicite:1]{index=1}
+ */
 async function fetchOpenAiOptions({ level0, path, maxOptions }) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { ok: false, kind: 'no_key', details: 'OPENAI_API_KEY not set' };
+
+  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 
   const input = [
     { role: 'system', content: 'You generate taxonomy drilldown options. Return JSON only (no markdown).' },
@@ -142,22 +151,49 @@ async function fetchOpenAiOptions({ level0, path, maxOptions }) {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'gpt-4.1-mini',
+      model,
       input,
       temperature: 0.4,
       max_output_tokens: 1200
     })
   });
 
-  if (!resp.ok) throw new Error(`OpenAI request failed: ${resp.status}`);
-  const data = await resp.json();
+  const text = await resp.text();
 
-  const outputText = Array.isArray(data.output)
-    ? data.output.flatMap(item => item.content || []).map(c => c.text || '').join('')
-    : '';
+  if (!resp.ok) {
+    // Return a *safe* summary. Do not include secrets.
+    return {
+      ok: false,
+      kind: 'http_error',
+      details: `OpenAI HTTP ${resp.status}: ${text.slice(0, 240).replace(/\s+/g, ' ')}`,
+      status: resp.status
+    };
+  }
 
-  if (!outputText) throw new Error('OpenAI response was empty.');
-  return JSON.parse(outputText);
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return { ok: false, kind: 'bad_json', details: `OpenAI returned non-JSON: ${text.slice(0, 240)}` };
+  }
+
+  // Responses API sometimes provides output_text; prefer it if present.
+  const outputText =
+    (typeof data.output_text === 'string' && data.output_text.trim()) ||
+    (Array.isArray(data.output)
+      ? data.output.flatMap(item => item.content || []).map(c => c.text || '').join('')
+      : '');
+
+  if (!outputText) {
+    return { ok: false, kind: 'empty_output', details: 'OpenAI response had no output_text/content text.' };
+  }
+
+  try {
+    const parsed = JSON.parse(outputText);
+    return { ok: true, payload: parsed };
+  } catch {
+    return { ok: false, kind: 'json_parse', details: `Model did not return pure JSON. First chars: ${outputText.slice(0, 240)}` };
+  }
 }
 
 exports.api = functions.https.onRequest(async (req, res) => {
@@ -175,25 +211,24 @@ exports.api = functions.https.onRequest(async (req, res) => {
   const path = sanitizePath(req.body?.path);
   const maxOptions = clampMaxOptions(req.body?.max_options);
 
-  try {
-    const openAiPayload = await fetchOpenAiOptions({ level0, path, maxOptions });
-    if (!openAiPayload) return res.json(stub(level0, path, maxOptions));
+  const result = await fetchOpenAiOptions({ level0, path, maxOptions });
 
-    const normalized = normalizeOptions(openAiPayload, maxOptions);
-    const buckets = normalizeBuckets(openAiPayload, normalized.options);
-
-    return res.json({
-      step: { level0, path_labels: path.map(p => p.label) },
-      options: normalized.options,
-      buckets,
-      can_confirm_here: Boolean(openAiPayload.can_confirm_here),
-      confirm_reason: openAiPayload.confirm_reason || 'Review your selection.',
-      warnings: [...(openAiPayload.warnings || []), ...normalized.warnings],
-    });
-  } catch (e) {
-    console.error(e);
-    const fallback = stub(level0, path, maxOptions);
-    fallback.warnings = ['OpenAI failed; returned stub fallback.'];
-    return res.json(fallback);
+  if (!result.ok) {
+    return res.json(stub(level0, path, maxOptions, [
+      'OpenAI failed; returned stub fallback.',
+      `Debug: ${result.kind} — ${result.details}`
+    ]));
   }
+
+  const normalized = normalizeOptions(result.payload, maxOptions);
+  const buckets = normalizeBuckets(result.payload, normalized.options);
+
+  return res.json({
+    step: { level0, path_labels: path.map(p => p.label) },
+    options: normalized.options,
+    buckets,
+    can_confirm_here: Boolean(result.payload.can_confirm_here),
+    confirm_reason: result.payload.confirm_reason || 'Review your selection.',
+    warnings: [...(result.payload.warnings || []), ...normalized.warnings],
+  });
 });
