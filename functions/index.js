@@ -176,7 +176,51 @@ async function fetchOpenAiOptions({ level0, path, maxOptions }) {
       model,
       input,
       temperature: 0.35,
-      max_output_tokens: 900
+      max_output_tokens: 900,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "taxonomy_options",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    id: { type: "string" },
+                    label: { type: "string" },
+                    description: { type: "string" },
+                    split_dimension: { type: "string" },
+                    confidence: { type: "number" }
+                  },
+                  required: ["id","label","description","split_dimension","confidence"]
+                }
+              },
+              buckets: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    label: { type: "string" },
+                    option_ids: { type: "array", items: { type: "string" } }
+                  },
+                  required: ["label","option_ids"]
+                }
+              },
+              can_confirm_here: { type: "boolean" },
+              confirm_reason: { type: "string" },
+              warnings: { type: "array", items: { type: "string" } }
+            },
+            required: ["options","buckets","can_confirm_here","confirm_reason","warnings"]
+          }
+        }
+      }
     })
   });
 
