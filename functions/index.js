@@ -53,17 +53,17 @@ function stub(level0,path){
 }
 
 // -------- OPENAI CALL --------
-async function fetchLLM(level0,path,maxOptions){
+async function fetchLLM(level0, path, maxOptions) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if(!apiKey) return null;
+  if (!apiKey) return null;
 
-  const target = Math.min(maxOptions||DEFAULT_TARGET_OPTIONS,DEFAULT_TARGET_OPTIONS);
+  const target = Math.min(maxOptions || DEFAULT_TARGET_OPTIONS, DEFAULT_TARGET_OPTIONS);
 
-  const prompt = `
-Return ONLY valid JSON.
+  const prompt =
+`Return ONLY valid JSON.
 Generate ${target} taxonomy options for:
 Domain: ${level0}
-Path: ${path.map(p=>p.label).join(" > ")||"(root)"}
+Path: ${path.map(p => p.label).join(" > ") || "(root)"}
 
 Schema:
 {
@@ -73,57 +73,79 @@ Schema:
 }
 `;
 
-  const r = await fetch("https://api.openai.com/v1/responses",{
-    method:"POST",
-    headers:{
-      "Authorization":`Bearer ${apiKey}`,
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      model:process.env.OPENAI_MODEL||"gpt-4.1-mini",
-      input:prompt,
-      max_output_tokens:800,
-      temperature:0.4
-    })
+  const payload = JSON.stringify({
+    model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+    input: prompt,
+    max_output_tokens: 800,
+    temperature: 0.4
   });
 
-  if(!r.ok){
-    console.log("OpenAI HTTP error",await r.text());
-    return null;
-  }
+  const https = require("https");
 
-  const data = await r.json();
+  const data = await new Promise((resolve, reject) => {
+    const req = https.request(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload)
+        }
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => (body += chunk));
+        res.on("end", () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            console.log("OpenAI HTTP error", body);
+            return resolve(null);
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            console.log("OpenAI JSON parse error", body.slice(0, 200));
+            resolve(null);
+          }
+        });
+      }
+    );
 
-  const text = (data.output||[])
-    .flatMap(o=>o.content||[])
-    .map(c=>c.text||"")
+    req.on("error", (err) => reject(err));
+    req.write(payload);
+    req.end();
+  });
+
+  if (!data) return null;
+
+  const text = (data.output || [])
+    .flatMap(o => o.content || [])
+    .map(c => c.text || "")
     .join("");
 
-  try{
+  try {
     const parsed = JSON.parse(text);
-
-    const options = (parsed.options||[]).slice(0,maxOptions).map(o=>({
-      id:o.id||o.label.toLowerCase().replace(/\s+/g,"-"),
-      label:o.label||"Option",
-      description:o.description||"",
-      split_dimension:o.split_dimension||"general",
-      confidence:Number(o.confidence)||0.5
+    const options = (parsed.options || []).slice(0, maxOptions).map(o => ({
+      id: o.id || (o.label ? o.label.toLowerCase().replace(/\s+/g, "-") : "option"),
+      label: o.label || "Option",
+      description: o.description || "",
+      split_dimension: o.split_dimension || "general",
+      confidence: Number(o.confidence) || 0.5
     }));
 
-    if(!options.length) return null;
+    if (!options.length) return null;
 
     return {
-      mode:"llm",
-      step:{level0,path_labels:path.map(p=>p.label)},
+      mode: "llm",
+      step: { level0, path_labels: path.map(p => p.label) },
       options,
-      buckets:[{label:"All options",option_ids:options.map(o=>o.id)}],
-      can_confirm_here:path.length>=2,
-      confirm_reason:"Review selection.",
-      warnings:[]
+      buckets: [{ label: "All options", option_ids: options.map(o => o.id) }],
+      can_confirm_here: path.length >= 2,
+      confirm_reason: "Review selection.",
+      warnings: []
     };
-
-  }catch(e){
-    console.log("JSON parse fail",text.slice(0,200));
+  } catch (e) {
+    console.log("Model text not pure JSON", text.slice(0, 200));
     return null;
   }
 }
