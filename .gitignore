@@ -2,3 +2,7 @@ functions/.env
 
 functions/.env
 functions/.secret.local
+
+# Local secrets
+functions/.env
+functions/.secret.local
