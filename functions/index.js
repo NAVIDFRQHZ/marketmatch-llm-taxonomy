@@ -1,7 +1,7 @@
 const functions = require('firebase-functions');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
-require('dotenv').config({ path: path.join(__dirname, '.secret.local') });
+require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
+require('dotenv').config({ path: path.join(__dirname, '.secret.local'), override: true });
 // (dotenv) Never log secrets. You can log booleans for debugging:
 console.log('[env] has OPENAI_API_KEY?', Boolean(process.env.OPENAI_API_KEY));
 console.log('[env] OPENAI_MODEL=', process.env.OPENAI_MODEL || '(default)');
