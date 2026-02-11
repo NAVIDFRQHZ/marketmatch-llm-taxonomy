@@ -9,7 +9,39 @@ const confirmationCard = document.getElementById('confirmation-card');
 const confirmationSummary = document.getElementById('confirmation-summary');
 const startOverButton = document.getElementById('start-over');
 
+// Fixed bottom reset button (client-side reset without refresh)
+const fixedResetBtn = document.createElement('button');
+fixedResetBtn.type = 'button';
+fixedResetBtn.className = 'fixed-reset hidden';
+fixedResetBtn.textContent = 'Reset';
+document.body.appendChild(fixedResetBtn);
+
 const state = { level0: null, path: [], options: [], buckets: [], canConfirm: false, confirmReason: '', warnings: [] };
+
+function updateResetVisibility() {
+  const isAtStep0 = !state.level0 && state.path.length === 0;
+  fixedResetBtn.classList.toggle('hidden', isAtStep0);
+}
+
+function resetToLevel0() {
+  state.level0 = null;
+  state.path = [];
+  state.options = [];
+  state.buckets = [];
+  state.canConfirm = false;
+  state.confirmReason = '';
+  state.warnings = [];
+
+  // UI reset
+  confirmationCard.classList.add('hidden');
+  drilldownCard.classList.add('hidden');
+  document.getElementById('step0-card').classList.remove('hidden');
+  optionsContainer.innerHTML = '';
+  renderPath();
+  updateControls();
+  setStatus('');
+  updateResetVisibility();
+}
 
 function setStatus(msg, isError=false) {
   warningsEl.textContent = msg || '';
@@ -97,7 +129,7 @@ async function fetchOptions() {
     const resp = await fetch('/api/next-options', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ level0: state.level0, path: state.path, max_options: 60 }),
+      body: JSON.stringify(payloadToSend),
     });
     if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
     const payload = await resp.json();
@@ -150,3 +182,7 @@ level0Choices.addEventListener('click', (e) => {
   confirmationCard.classList.add('hidden');
   fetchOptions();
 });
+
+
+fixedResetBtn.addEventListener('click', () => { resetToLevel0(); });
+updateResetVisibility();

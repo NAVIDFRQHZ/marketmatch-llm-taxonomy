@@ -25,3 +25,22 @@ body { margin: 0; background: #0b0f14; color: #e9eef5; }
 .option-description { display:block; color: #b8c6da; margin-bottom: 8px; }
 .option-meta { display:block; color: #7f90a8; font-size: 12px; }
 .empty { color: #a8b3c4; }
+
+
+/* Fixed bottom reset button */
+.fixed-reset{
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  min-width: 140px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: white;
+  box-shadow: 0 8px 20px rgba(18, 28, 54, 0.25);
+  cursor: pointer;
+}
+
+.hidden{ display:none !important; }
