@@ -144,9 +144,16 @@ Schema:
   }
 
   const text = (data.output || [])
-    .flatMap(o => o.content || [])
-    .map(c => c.text || "")
-    .join("");
+      .flatMap(o => o.content || [])
+      .map(c => {
+        // Responses API commonly uses { type: "output_text", text: "..." }
+        if (typeof c?.text === "string") return c.text;
+        if (typeof c?.output_text === "string") return c.output_text;
+        // Some SDKs wrap text in { type:"output_text", text:"..." }
+        if (c?.type === "output_text" && typeof c?.text === "string") return c.text;
+        return "";
+      })
+      .join("");
 
   try {
     const parsed = JSON.parse(text);
