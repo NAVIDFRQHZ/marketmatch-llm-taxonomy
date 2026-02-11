@@ -108,6 +108,7 @@ function renderOptions() {
         state.path = [...state.path, { id: option.id, label: option.label }];
         updateResetVisibility();
     fetchOptions();
+    updateResetVisibility();
       });
 
       list.appendChild(card);
