@@ -180,9 +180,10 @@ exports.api = functions.https.onRequest(async (req,res)=>{
   res.set("Access-Control-Allow-Origin","*");
   if(req.method==="OPTIONS") return res.status(204).send("");
 
-  if(req.path!=="/next-options") return res.status(404).json({error:"Not found"});
-
-  const level0=req.body.level0;
+  const pth = req.path || "";
+    const ok = (pth === "/next-options" || pth === "/api/next-options");
+    if (!ok) return res.status(404).json({ error: "Not found" });
+const level0=req.body.level0;
   if(!ALLOWED_LEVEL0.has(level0)) return res.status(400).json({error:"bad level0"});
 
   const path=Array.isArray(req.body.path)?req.body.path:[];

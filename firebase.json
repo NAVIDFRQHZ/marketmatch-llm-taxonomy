@@ -1,15 +1,41 @@
 {
-  "functions": { "source": "functions" },
+  "functions": {
+    "source": "functions"
+  },
   "hosting": {
     "public": "public",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "/api/**", "function": "api" }]
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "function": "api"
+      }
+    ]
   },
   "emulators": {
-    "hosting": { "host": "127.0.0.1", "port": 5050 },
-    "functions": { "host": "127.0.0.1", "port": 5001 },
-    "ui": { "host": "127.0.0.1", "port": 4000 },
-    "hub": { "host": "127.0.0.1", "port": 4400 },
-    "logging": { "host": "127.0.0.1", "port": 4500 }
+    "hub": {
+      "host": "127.0.0.1",
+      "port": 4401
+    },
+    "ui": {
+      "host": "127.0.0.1",
+      "port": 4001
+    },
+    "logging": {
+      "host": "127.0.0.1",
+      "port": 4501
+    },
+    "functions": {
+      "host": "127.0.0.1",
+      "port": 5001
+    },
+    "hosting": {
+      "host": "127.0.0.1",
+      "port": 5050
+    }
   }
 }
