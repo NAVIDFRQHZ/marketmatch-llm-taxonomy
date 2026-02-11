@@ -6,3 +6,17 @@ functions/.secret.local
 # Local secrets
 functions/.env
 functions/.secret.local
+
+# Secrets / local env
+.env
+functions/.env
+functions/.secret.local
+.secret.local
+
+# Local stuff
+firebase-debug.log
+.firebaserc
+functions/node_modules/
+node_modules/
+package-lock.json
+functions/package-lock.json
