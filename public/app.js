@@ -106,7 +106,8 @@ function renderOptions() {
       card.append(title, desc, meta);
       card.addEventListener('click', () => {
         state.path = [...state.path, { id: option.id, label: option.label }];
-        fetchOptions();
+        updateResetVisibility();
+    fetchOptions();
       });
 
       list.appendChild(card);
@@ -163,14 +164,7 @@ confirmButton.addEventListener('click', () => {
   confirmationSummary.textContent = `You confirmed: ${formatLevel0(state.level0)}${labels.length ? ' → ' + labels.join(' → ') : ''}. ${state.confirmReason}`;
 });
 
-startOverButton.addEventListener('click', () => {
-  state.level0 = null;
-  state.path = [];
-  confirmationCard.classList.add('hidden');
-  drilldownCard.classList.add('hidden');
-  document.getElementById('step0-card').classList.remove('hidden');
-  setStatus('');
-});
+startOverButton.addEventListener('click', () => { resetToLevel0(); });
 
 level0Choices.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-level0]');
