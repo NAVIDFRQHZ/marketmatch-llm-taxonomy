@@ -128,6 +128,8 @@ async function fetchOptions() {
   setStatus('Loading options…');
   optionsContainer.innerHTML = '';
   try {
+    const payloadToSend = { level0: state.level0, path: state.path, max_options: 60 };
+    console.log('POST /api/next-options payload:', payloadToSend);
     const resp = await fetch('/api/next-options', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -165,12 +167,15 @@ confirmButton.addEventListener('click', () => {
   confirmationSummary.textContent = `You confirmed: ${formatLevel0(state.level0)}${labels.length ? ' → ' + labels.join(' → ') : ''}. ${state.confirmReason}`;
 });
 
-startOverButton.addEventListener('click', () => { resetToLevel0(); });
+  startOverButton.addEventListener('click', () => {
+    resetToLevel0();
+  });
 
 level0Choices.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-level0]');
   if (!btn) return;
   state.level0 = btn.dataset.level0;
+    updateResetVisibility();
   state.path = [];
   document.getElementById('step0-card').classList.add('hidden');
   drilldownCard.classList.remove('hidden');
