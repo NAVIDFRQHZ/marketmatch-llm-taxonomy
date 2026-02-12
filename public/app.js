@@ -124,18 +124,28 @@ function updateControls() {
   confirmButton.disabled = !state.canConfirm;
 }
 
+
+function fetchWithTimeout(url, opts, ms=12000) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(t));
+}
+
 async function fetchOptions() {
   setStatus('Loading options…');
   optionsContainer.innerHTML = '';
   try {
     const payloadToSend = { level0: state.level0, path: state.path, max_options: 60 };
     console.log('POST /api/next-options payload:', payloadToSend);
-    const resp = await fetch('/api/next-options', {
+    const resp = await fetchWithTimeout('/api/next-options', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payloadToSend),
     });
-    if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
+    if (!resp.ok) {
+        const t = await resp.text().catch(()=> '');
+        throw new Error(`Request failed: ${resp.status} ${t.slice(0,200)}`);
+      }
     const payload = await resp.json();
 
     state.options = payload.options || [];
