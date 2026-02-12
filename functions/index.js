@@ -23,6 +23,25 @@ function stub(level0, path) {
   };
 }
 
+
+function getResponsesOutputText(data) {
+  if (!data) return '';
+  if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text;
+
+  // Newer Responses shape: data.output is an array; each item has content[] with {type:'output_text', text:'...'}
+  const out = Array.isArray(data.output) ? data.output : [];
+  let acc = '';
+  for (const item of out) {
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const c of content) {
+      if (!c) continue;
+      if (typeof c.text === 'string') acc += c.text;
+      // Sometimes nested: {type:'output_text', text:'...'} already handled above
+    }
+  }
+  return acc.trim();
+}
+
 function extractJsonObject(text) {
   if (!text) return null;
   // try direct JSON
@@ -72,9 +91,10 @@ async function callOpenAI(prompt) {
   let data = null;
   try { data = JSON.parse(text); } catch (_) {}
 
-  let outText = '';
-  if (data && typeof data.output_text === 'string') outText = data.output_text;
-  if (!outText) outText = text; // fallback
+  let outText = getResponsesOutputText(data);
+
+  // If we still can't find text, fall back to raw response JSON string
+  if (!outText) outText = text;
 
   return { ok: true, model, outText };
 }
@@ -112,6 +132,7 @@ exports.api = functions.https.onRequest(async (req, res) => {
       const parsed = extractJsonObject(resp.outText);
       if (!parsed || !Array.isArray(parsed.options)) {
         const out = stub(level0, selPath);
+        console.log('Parse failed; extracted outText head:', String(resp.outText).slice(0, 250));
         out.warnings = ['Stub fallback active. (model output not valid JSON)'];
         return res.status(200).json(out);
       }
