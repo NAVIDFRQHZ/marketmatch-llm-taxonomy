@@ -5,7 +5,10 @@ require('dotenv').config({ path: path.join(__dirname, '.secret.local'), override
 // (dotenv) Never log secrets. You can log booleans for debugging:
 console.log('[env] has OPENAI_API_KEY?', Boolean(process.env.OPENAI_API_KEY));
 
-const BUILD_STAMP = '17494be';
+const BUILD_STAMP = 'llmfix-001';
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
 console.log('[env] OPENAI_MODEL=', process.env.OPENAI_MODEL || '(default)');
 
 
@@ -135,16 +138,8 @@ Schema:
   if (!data) return null;
   // If we captured an OpenAI error body, surface it safely
   if (data.__openai_error) {
-    return {
-      mode: "stub",
-      step: { level0, path_labels: path.map(p => p.label) },
-      options: generateStubOptions(level0, path, maxOptions).options,
-      buckets: generateStubOptions(level0, path, maxOptions).buckets,
-      can_confirm_here: false,
-      confirm_reason: "OpenAI error (see warnings).",
-      warnings: ["OpenAI request failed.", data.__openai_error]
-    };
-  }
+      return { __openai_error: String(data.__openai_error).slice(0, 900) };
+    }
 
   const text = (data.output || [])
       .flatMap(o => o.content || [])
@@ -168,7 +163,7 @@ Schema:
       confidence: Number(o.confidence) || 0.5
     }));
 
-    if (!options.length) return null;
+    if (!options.length) return { __openai_error: 'empty_options' };
 
     return {
       mode: "llm",
@@ -186,6 +181,16 @@ Schema:
 }
 
 // -------- API --------
+
+async function fetchLLMWithRetry(level0, path, maxOptions) {
+  const first = await fetchLLM(level0, path, maxOptions);
+  if (first && !first.__openai_error) return first;
+  await sleep(250);
+  const second = await fetchLLM(level0, path, maxOptions);
+  if (second && !second.__openai_error) return second;
+  return (second && second.__openai_error) ? second : first;
+}
+
 exports.api = functions.https.onRequest(async (req,res)=>{
   res.set("Access-Control-Allow-Origin","*");
   if(req.method==="OPTIONS") return res.status(204).send("");
