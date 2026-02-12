@@ -1,237 +1,204 @@
-let activeRequestController = null;
-const APP_BUILD_STAMP = '2026-02-12T16:08:10Z';
+const APP_BUILD_STAMP = new Date().toISOString();
 console.log('[app_build]', APP_BUILD_STAMP);
 
+// ----- UI refs
+const elStatus = document.getElementById('status');
+const elLevel0 = document.getElementById('level0');
+const elPath = document.getElementById('path');
+const elOptions = document.getElementById('options');
+const elMeta = document.getElementById('meta');
+const btnBack = document.getElementById('backBtn');
+const btnConfirm = document.getElementById('confirmBtn');
+const btnReset = document.getElementById('resetBtn');
 
-function isAbortError(error) {
-  const name = String(error?.name || '');
-  const message = String(error?.message || '');
-  return name === 'AbortError'
-    || message.includes('AbortError')
-    || message.includes('signal is aborted');
+const LEVEL0_CHOICES = [
+  { id: 'physical-products', label: 'Physical Products' },
+  { id: 'services', label: 'Services' },
+  { id: 'entertainment', label: 'Entertainment' }
+];
+
+// ----- State
+const state = {
+  level0: null,
+  path: [],          // array of selected option ids (or labels), sent to backend
+  pathLabels: [],    // for display
+  lastResponse: null
+};
+
+// ----- Request control (THIS IS THE IMPORTANT PART)
+let activeController = null;
+let requestSeq = 0;
+
+// ----- Helpers
+function setStatus(msg, kind = '') {
+  elStatus.textContent = msg || '';
+  elStatus.className = 'status' + (kind ? ` ${kind}` : '');
 }
 
+function isAbortError(err) {
+  const name = String(err?.name || '');
+  const msg = String(err?.message || err || '');
+  return name === 'AbortError' || msg.includes('AbortError') || msg.includes('signal is aborted');
+}
 
-// Keep a single controller for the latest in-flight request
-let currentFetchController = null;
-let currentFetchSeq = 0;
+function showReset(show) {
+  btnReset.classList.toggle('hidden', !show);
+}
 
-const level0Choices = document.getElementById('level0-choices');
-const drilldownCard = document.getElementById('drilldown-card');
-const optionsContainer = document.getElementById('options-container');
-const pathSummary = document.getElementById('path-summary');
-const backButton = document.getElementById('back-button');
-const confirmButton = document.getElementById('confirm-button');
-const warningsEl = document.getElementById('warnings');
-const confirmationCard = document.getElementById('confirmation-card');
-const confirmationSummary = document.getElementById('confirmation-summary');
-const startOverButton = document.getElementById('start-over');
+function render() {
+  // level0 chips
+  elLevel0.innerHTML = '';
+  for (const c of LEVEL0_CHOICES) {
+    const b = document.createElement('button');
+    b.className = 'chip' + (state.level0 === c.id ? ' active' : '');
+    b.textContent = c.label;
+    b.onclick = () => {
+      if (state.level0 === c.id) return;
+      resetAll();
+      state.level0 = c.id;
+      requestNext();
+      render();
+    };
+    elLevel0.appendChild(b);
+  }
 
-// Fixed bottom reset button (client-side reset without refresh)
-const fixedResetBtn = document.createElement('button');
-fixedResetBtn.type = 'button';
-fixedResetBtn.className = 'fixed-reset hidden';
-fixedResetBtn.textContent = 'Reset';
-document.body.appendChild(fixedResetBtn);
+  elPath.textContent = state.pathLabels.length ? state.pathLabels.join(' → ') : '(none)';
+  btnBack.disabled = state.path.length === 0;
+  btnConfirm.disabled = !state.level0;
 
-const state = { level0: null, path: [], options: [], buckets: [], canConfirm: false, confirmReason: '', warnings: [] };
+  showReset(!!state.level0);
+}
 
-function updateResetVisibility() {
-  const isAtStep0 = !state.level0 && state.path.length === 0;
-  fixedResetBtn.classList.toggle('hidden', isAtStep0);
+function resetAll() {
+  // abort any in-flight request
+  if (activeController) {
+    try { activeController.abort(); } catch (_) {}
+    activeController = null;
+  }
+  state.level0 = null;
+  state.path = [];
+  state.pathLabels = [];
+  state.lastResponse = null;
+  elOptions.innerHTML = '';
+  elMeta.textContent = '';
+  setStatus('');
+  render();
 }
 
 function resetToLevel0() {
-  if (activeRequestController) {
-    activeRequestController.abort();
-    activeRequestController = null;
+  if (!state.level0) return;
+  if (activeController) {
+    try { activeController.abort(); } catch (_) {}
+    activeController = null;
   }
-
-  state.level0 = null;
   state.path = [];
-  state.options = [];
-  state.buckets = [];
-  state.canConfirm = false;
-  state.confirmReason = '';
-  state.warnings = [];
-
-  // UI reset
-  confirmationCard.classList.add('hidden');
-  drilldownCard.classList.add('hidden');
-  document.getElementById('step0-card').classList.remove('hidden');
-  optionsContainer.innerHTML = '';
-  renderPath();
-  updateControls();
+  state.pathLabels = [];
+  state.lastResponse = null;
+  elOptions.innerHTML = '';
+  elMeta.textContent = '';
   setStatus('');
-  updateResetVisibility();
+  requestNext();
+  render();
 }
 
-function setStatus(msg, isError=false) {
-  warningsEl.textContent = msg || '';
-  warningsEl.classList.toggle('error', Boolean(isError));
-}
+btnReset.onclick = resetAll;
 
-function formatLevel0(level0) {
-  if (level0 === 'physical_products') return 'Physical Products';
-  if (level0 === 'services') return 'Services';
-  if (level0 === 'entertainment') return 'Entertainment';
-  return '';
-}
+btnBack.onclick = () => {
+  if (state.path.length === 0) return;
+  state.path.pop();
+  state.pathLabels.pop();
+  requestNext();
+  render();
+};
 
-function renderPath() {
-  const labels = state.path.map(p => p.label);
-  pathSummary.textContent = labels.length
-    ? `Top-level domain: ${formatLevel0(state.level0)} · Path: ${labels.join(' → ')}`
-    : `Top-level domain: ${formatLevel0(state.level0)}. Choose a category below.`;
-}
+btnConfirm.onclick = async () => {
+  if (!state.level0) return;
+  // Confirm just shows the selection key. (Your submit step can be added later.)
+  const key = [state.level0, ...state.path].join('>');
+  setStatus(`Confirmed: ${key}`, 'ok');
+};
 
-function renderOptions() {
-  optionsContainer.innerHTML = '';
-  if (!state.options.length) {
-    optionsContainer.innerHTML = '<p class="empty">No options returned.</p>';
-    return;
+// ----- Core request
+async function requestNext() {
+  if (!state.level0) return;
+
+  const seq = ++requestSeq;
+
+  // Abort previous request (normal behavior)
+  if (activeController) {
+    try { activeController.abort(); } catch (_) {}
   }
-  const optionById = new Map(state.options.map(o => [o.id, o]));
-  const buckets = state.buckets?.length ? state.buckets : [{ label: 'All options', option_ids: state.options.map(o => o.id) }];
-
-  for (const bucket of buckets) {
-    const section = document.createElement('section');
-    section.className = 'bucket';
-
-    const h = document.createElement('h3');
-    h.textContent = bucket.label;
-    section.appendChild(h);
-
-    const list = document.createElement('div');
-    list.className = 'bucket-options';
-
-    for (const id of (bucket.option_ids || [])) {
-      const option = optionById.get(id);
-      if (!option) continue;
-
-      const card = document.createElement('button');
-      card.className = 'option-card';
-      card.type = 'button';
-
-      const title = document.createElement('span');
-      title.className = 'option-title';
-      title.textContent = option.label;
-
-      const desc = document.createElement('span');
-      desc.className = 'option-description';
-      desc.textContent = option.description || '';
-
-      const meta = document.createElement('span');
-      meta.className = 'option-meta';
-      const conf = Number.isFinite(option.confidence) ? option.confidence : 0.5;
-      meta.textContent = `Split: ${option.split_dimension || 'N/A'} · Confidence: ${conf.toFixed(2)}`;
-
-      card.append(title, desc, meta);
-      card.addEventListener('click', () => {
-        state.path = [...state.path, { id: option.id, label: option.label }];
-        updateResetVisibility();
-    fetchOptions();
-    updateResetVisibility();
-      });
-
-      list.appendChild(card);
-    }
-
-    section.appendChild(list);
-    optionsContainer.appendChild(section);
-  }
-}
-
-function updateControls() {
-  backButton.disabled = state.path.length === 0;
-  confirmButton.disabled = !state.canConfirm;
-}
-
-
-function fetchWithTimeout(url, opts, ms=12000) {
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), ms);
-  return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(t));
-}
+  activeController = controller;
 
-async function fetchOptions() {
-  // sequence guard so older responses can't overwrite UI
-  const seq = ++currentFetchSeq;
+  setStatus('Loading…');
 
-  // abort previous in-flight request (normal on fast clicks)
-  if (currentFetchController) { try { currentFetchController.abort(); } catch (_) {
-    // IMPORTANT: ignore expected aborts from AbortController
-    if (_ && (_.name === 'AbortError' || String(_).includes('AbortError'))) {
-      return;
-    }
-} }
-  currentFetchController = new AbortController();
-  const { signal } = currentFetchController;
+  const payload = { level0: state.level0, path: state.path, max_options: 10 };
 
-
-  setStatus('Loading options…');
-  optionsContainer.innerHTML = '';
   try {
-    const payloadToSend = { level0: state.level0, path: state.path, max_options: 60 };
-    console.log('POST /api/next-options payload:', payloadToSend);
-    const resp = await fetchWithTimeout('/api/next-options', {
+    const r = await fetch('/api/next-options', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payloadToSend),
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      cache: 'no-store'
     });
-    if (!resp.ok) {
-        const t = await resp.text().catch(()=> '');
-        throw new Error(`Request failed: ${resp.status} ${t.slice(0,200)}`);
-      }
-    const payload = await resp.json();
 
-    state.options = payload.options || [];
-    state.buckets = payload.buckets || [];
-    state.canConfirm = Boolean(payload.can_confirm_here);
-    state.confirmReason = payload.confirm_reason || '';
-    state.warnings = payload.warnings || [];
+    // stale / aborted: ignore
+    if (seq !== requestSeq || controller.signal.aborted) return;
 
-    renderPath();
-    renderOptions();
-    updateControls();
-    setStatus(state.warnings.length ? state.warnings.join(' ') : '');
-  } catch (e) {
-    console.error(e);
-    setStatus('Unable to load options. Please try again.', true);
+    const text = await r.text();
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.slice(0, 300)}`);
+
+    const data = JSON.parse(text);
+    state.lastResponse = data;
+
+    // stale / aborted: ignore again
+    if (seq !== requestSeq || controller.signal.aborted) return;
+
+    // render options
+    const opts = Array.isArray(data.options) ? data.options : [];
+    elOptions.innerHTML = '';
+    for (const o of opts) {
+      const div = document.createElement('div');
+      div.className = 'opt';
+      div.innerHTML = `<div class="name">${escapeHtml(o.label || o.id || 'Option')}</div>
+                       <div class="desc">${escapeHtml(o.description || '')}</div>`;
+      div.onclick = () => {
+        // Selecting an option pushes deeper
+        state.path.push(String(o.id || o.label));
+        state.pathLabels.push(String(o.label || o.id));
+        requestNext();
+        render();
+      };
+      elOptions.appendChild(div);
+    }
+
+    // meta
+    const mode = data.mode || '(unknown)';
+    const warn = Array.isArray(data.warnings) ? data.warnings.join(' | ') : '';
+    elMeta.textContent = `Build: ${APP_BUILD_STAMP} | mode: ${mode}` + (warn ? ` | warnings: ${warn}` : '');
+
+    setStatus('');
+  } catch (err) {
+    // IMPORTANT: aborts are normal. never show UI error for them.
+    if (isAbortError(err) || controller.signal.aborted || seq !== requestSeq) return;
+
+    console.error('requestNext failed:', err);
+    setStatus('Unable to load options. Please try again.', 'error');
+  } finally {
+    if (activeController === controller) activeController = null;
   }
-
 }
 
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
 
-backButton.addEventListener('click', () => {
-  if (!state.path.length) return;
-  state.path = state.path.slice(0, -1);
-  fetchOptions();
-});
-
-confirmButton.addEventListener('click', () => {
-  confirmationCard.classList.remove('hidden');
-  drilldownCard.classList.add('hidden');
-  const labels = state.path.map(p => p.label);
-  confirmationSummary.textContent = `You confirmed: ${formatLevel0(state.level0)}${labels.length ? ' → ' + labels.join(' → ') : ''}. ${state.confirmReason}`;
-});
-
-  startOverButton.addEventListener('click', () => {
-    resetToLevel0();
-  });
-
-level0Choices.addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-level0]');
-  if (!btn) return;
-  state.level0 = btn.dataset.level0;
-    updateResetVisibility();
-  state.path = [];
-  document.getElementById('step0-card').classList.add('hidden');
-  drilldownCard.classList.remove('hidden');
-  confirmationCard.classList.add('hidden');
-  fetchOptions();
-});
-
-
-fixedResetBtn.addEventListener('click', () => { resetToLevel0(); });
-updateResetVisibility();
+// initial
+render();

@@ -3,46 +3,44 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MarketMatch LLM Taxonomy Drill</title>
+  <title>MarketMatch — LLM Taxonomy Drill</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <main class="wrap">
-    <header class="top">
-      <h1>MarketMatch — LLM Taxonomy Drill</h1>
-      <p class="sub">Pick a domain → drill down with generated options → confirm anywhere meaningful.</p>
-    </header>
+  <div class="app">
+    <div class="header">
+      <div class="title">MarketMatch — LLM Taxonomy Drill</div>
+      <div class="subtitle">Pick a domain → drill down → confirm anywhere meaningful</div>
+    </div>
 
-    <section id="step0-card" class="card">
-      <h2>Step 0 — Choose a domain</h2>
-      <div id="level0-choices" class="row">
-        <button class="pill" data-level0="physical_products" type="button">Physical Products</button>
-        <button class="pill" data-level0="services" type="button">Services</button>
-        <button class="pill" data-level0="entertainment" type="button">Entertainment</button>
-      </div>
-    </section>
+    <div class="card">
+      <div id="status" class="status"></div>
 
-    <section id="drilldown-card" class="card hidden">
-      <div class="card-head">
-        <h2>Drill-down</h2>
-        <div class="controls">
-          <button id="back-button" class="btn" type="button" disabled>Back</button>
-          <button id="confirm-button" class="btn primary" type="button" disabled>Confirm here</button>
-        </div>
+      <div class="row">
+        <div class="label">Top domain</div>
+        <div id="level0" class="chips"></div>
       </div>
 
-      <p id="path-summary" class="path"></p>
-      <p id="warnings" class="warn"></p>
+      <div class="row">
+        <div class="label">Path</div>
+        <div id="path" class="path"></div>
+      </div>
 
-      <div id="options-container" class="options"></div>
-    </section>
+      <div class="row">
+        <div class="label">Options</div>
+        <div id="options" class="options"></div>
+      </div>
 
-    <section id="confirmation-card" class="card hidden">
-      <h2>Confirmed selection</h2>
-      <p id="confirmation-summary" class="path"></p>
-      <button id="start-over" class="btn" type="button">Start over</button>
-    </section>
-  </main>
+      <div class="row actions">
+        <button id="backBtn" class="btn" disabled>Back</button>
+        <button id="confirmBtn" class="btn primary" disabled>Confirm here</button>
+      </div>
+
+      <div class="meta" id="meta"></div>
+    </div>
+  </div>
+
+  <button id="resetBtn" class="fixed-reset hidden">Reset</button>
 
   <script src="/app.js"></script>
 </body>

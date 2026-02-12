@@ -1,7 +1,4 @@
 {
-  "functions": {
-    "source": "functions"
-  },
   "hosting": {
     "public": "public",
     "ignore": [
@@ -10,68 +7,29 @@
       "**/node_modules/**"
     ],
     "rewrites": [
-      {
-        "source": "/api/**",
-        "function": "api"
-      }
+      { "source": "/api/**", "function": "api" },
+      { "source": "**", "destination": "/index.html" }
     ],
     "headers": [
       {
         "source": "/app.js",
         "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-store, no-cache, must-revalidate, max-age=0"
-          },
-          {
-            "key": "Pragma",
-            "value": "no-cache"
-          },
-          {
-            "key": "Expires",
-            "value": "0"
-          }
+          { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" },
+          { "key": "Pragma", "value": "no-cache" },
+          { "key": "Expires", "value": "0" }
         ]
       },
       {
         "source": "/index.html",
         "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-store, no-cache, must-revalidate, max-age=0"
-          },
-          {
-            "key": "Pragma",
-            "value": "no-cache"
-          },
-          {
-            "key": "Expires",
-            "value": "0"
-          }
+          { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0" },
+          { "key": "Pragma", "value": "no-cache" },
+          { "key": "Expires", "value": "0" }
         ]
       }
     ]
   },
-  "emulators": {
-    "hub": {
-      "host": "127.0.0.1",
-      "port": 4401
-    },
-    "ui": {
-      "host": "127.0.0.1",
-      "port": 4001
-    },
-    "logging": {
-      "host": "127.0.0.1",
-      "port": 4501
-    },
-    "functions": {
-      "host": "127.0.0.1",
-      "port": 5001
-    },
-    "hosting": {
-      "host": "127.0.0.1",
-      "port": 5050
-    }
+  "functions": {
+    "source": "functions"
   }
 }

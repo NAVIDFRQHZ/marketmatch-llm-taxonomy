@@ -1,8 +1,4 @@
 {
   "name": "marketmatch-llm-taxonomy",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "test:stub": "node scripts/test-stub.js"
-  }
+  "private": true
 }

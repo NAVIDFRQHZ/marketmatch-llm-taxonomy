@@ -1,220 +1,136 @@
 const functions = require('firebase-functions');
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
-require('dotenv').config({ path: path.join(__dirname, '.secret.local'), override: true });
-// (dotenv) Never log secrets. You can log booleans for debugging:
-console.log('[env] has OPENAI_API_KEY?', Boolean(process.env.OPENAI_API_KEY));
+const admin = require('firebase-admin');
+admin.initializeApp();
 
-const BUILD_STAMP = 'llmfix-002';
-
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-
-console.log('[env] OPENAI_MODEL=', process.env.OPENAI_MODEL || '(default)');
-
-
-const ALLOWED_LEVEL0 = new Set(['physical_products','services','entertainment']);
-const MAX_OPTIONS_LIMIT = 60;
-
-const DEFAULT_TARGET_OPTIONS = 24;
-
-// Simple in-memory cache
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const cache = new Map();
-
-function cacheKey(level0,path){
-  return level0 + "|" + path.map(p=>p.id).join(">");
-}
-
-function getCached(key){
-  const v = cache.get(key);
-  if(!v) return null;
-  if(Date.now()-v.ts > CACHE_TTL_MS){ cache.delete(key); return null; }
-  return v.data;
-}
-
-function setCached(key,data){
-  cache.set(key,{ts:Date.now(),data});
-}
-
-// -------- STUB --------
-function stub(level0,path){
-  const depth = path.length+1;
-  const options = Array.from({length:18},(_,i)=>({
-    id:`${level0}-${depth}-${i+1}`,
-    label:`${level0} option ${depth}.${i+1}`,
-    description:`Stub option for ${level0} at depth ${depth}.`,
-    split_dimension:"stub",
-    confidence:0.6
+function stub(level0, path) {
+  const depth = (path || []).length + 1;
+  const base = String(level0 || 'root');
+  const options = Array.from({ length: 10 }, (_, i) => ({
+    id: `${base}-${depth}-${i+1}`,
+    label: `${base} option ${depth}.${i+1}`,
+    description: `Stub option for ${base} at depth ${depth}.`,
+    split_dimension: 'stub',
+    confidence: 0.6
   }));
   return {
-    mode:"stub",
-    step:{level0,path_labels:path.map(p=>p.label)},
+    mode: 'stub',
+    step: { level0, path_labels: [] },
     options,
-    buckets:[{label:"All options",option_ids:options.map(o=>o.id)}],
-    can_confirm_here:path.length>=2,
-    confirm_reason:"Keep drilling down.",
-    warnings:["Stub fallback active."]
+    warnings: ['Stub fallback active.']
   };
 }
 
-// Compatibility alias (some code paths call this name)
-function generateStubOptions(level0, path, maxOptions) {
-  return stub(level0, path);
+function extractJsonObject(text) {
+  if (!text) return null;
+  // try direct JSON
+  try { return JSON.parse(text); } catch (_) {}
+  // strip ```json fences
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) {
+    try { return JSON.parse(fenced[1]); } catch (_) {}
+  }
+  // best-effort: first { ... last }
+  const a = text.indexOf('{');
+  const b = text.lastIndexOf('}');
+  if (a >= 0 && b > a) {
+    const slice = text.slice(a, b + 1);
+    try { return JSON.parse(slice); } catch (_) {}
+  }
+  return null;
 }
 
-// -------- OPENAI CALL --------
-async function fetchLLM(level0, path, maxOptions) {
+async function callOpenAI(prompt) {
   const cfg = (typeof functions.config === 'function') ? (functions.config() || {}) : {};
   const apiKey = process.env.OPENAI_API_KEY || (cfg.openai && cfg.openai.key) || '';
-  // Safe fingerprint (does NOT reveal full key)
-  console.log("[env] key_fingerprint", {
-    prefix: (apiKey || "").slice(0, 7),
-    suffix: (apiKey || "").slice(-4),
-    len: (apiKey || "").length
+  const model = process.env.OPENAI_MODEL || (cfg.openai && cfg.openai.model) || 'gpt-4.1-mini';
+
+  if (!apiKey) return { ok: false, error: 'missing_api_key' };
+
+  const url = 'https://api.openai.com/v1/responses';
+  const body = {
+    model,
+    input: prompt
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
   });
-  if (!apiKey) return null;
 
-  const target = Math.min(maxOptions || DEFAULT_TARGET_OPTIONS, DEFAULT_TARGET_OPTIONS);
+  const text = await res.text();
+  if (!res.ok) return { ok: false, error: `openai_http_${res.status}`, raw: text.slice(0, 600) };
 
-  const prompt =
-`Return ONLY valid JSON.
-Generate ${target} taxonomy options for:
-Domain: ${level0}
-Path: ${path.map(p => p.label).join(" > ") || "(root)"}
+  // responses API format: output_text is easiest when present, otherwise raw parse fallback
+  let data = null;
+  try { data = JSON.parse(text); } catch (_) {}
 
-Schema:
-{
- "options":[
-  {"id":"","label":"","description":"","split_dimension":"","confidence":0.0}
- ]
+  let outText = '';
+  if (data && typeof data.output_text === 'string') outText = data.output_text;
+  if (!outText) outText = text; // fallback
+
+  return { ok: true, model, outText };
 }
-`;
 
-  const payload = JSON.stringify({
-    model: process.env.OPENAI_MODEL || (cfg.openai && cfg.openai.model) || "gpt-4.1-mini",
-    input: prompt,
-    // Force JSON-only output in Responses API
-    text: { format: { type: "json_object" } },
-    max_output_tokens: 900,
-    temperature: 0.3
-  });
+exports.api = functions.https.onRequest(async (req, res) => {
+  // CORS for simple hosting calls
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(204).send('');
 
-  const https = require("https");
+  const path = req.path || '';
+  if (req.method === 'POST' && path.endsWith('/next-options')) {
+    const { level0, path: selPath, max_options } = req.body || {};
+    const depth = Array.isArray(selPath) ? selPath.length : 0;
 
-  const data = await new Promise((resolve, reject) => {
-    const req = https.request(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload)
-        }
-      },
-      (res) => {
-        let body = "";
-        res.on("data", (chunk) => (body += chunk));
-        res.on("end", () => {
-          if (res.statusCode < 200 || res.statusCode >= 300) {
-            console.log("OpenAI HTTP error", body);
-            return resolve({ __openai_error: body.slice(0, 400) });
-          }
-          try {
-            resolve(JSON.parse(body));
-          } catch (e) {
-            console.log("OpenAI JSON parse error", body.slice(0, 200));
-            resolve(null);
-          }
-        });
+    const prompt = [
+      'You are a taxonomy generator.',
+      'Return STRICT JSON ONLY (no markdown).',
+      'Schema: {"options":[{"id":string,"label":string,"description":string,"split_dimension":string,"confidence":number}]}',
+      `Level0: ${level0}`,
+      `Current path: ${(selPath || []).join(' > ')}`,
+      `Generate up to ${Math.min(Number(max_options)||10, 12)} next subcategories for the next drill step.`,
+      'Be concrete, avoid duplicates, keep labels short.'
+    ].join('\n');
+
+    try {
+      const resp = await callOpenAI(prompt);
+      if (!resp.ok) {
+        const out = stub(level0, selPath);
+        out.warnings = [`Stub fallback active. (${resp.error})`];
+        return res.status(200).json(out);
       }
-    );
 
-    req.on("error", (err) => reject(err));
-    req.write(payload);
-    req.end();
-  });
+      const parsed = extractJsonObject(resp.outText);
+      if (!parsed || !Array.isArray(parsed.options)) {
+        const out = stub(level0, selPath);
+        out.warnings = ['Stub fallback active. (model output not valid JSON)'];
+        return res.status(200).json(out);
+      }
 
-  if (!data) return null;
-  // If we captured an OpenAI error body, surface it safely
-  if (data.__openai_error) {
-      return { __openai_error: String(data.__openai_error).slice(0, 900) };
+      // normalize
+      const options = parsed.options.slice(0, Math.min(Number(max_options)||10, 12)).map((o) => ({
+        id: String(o.id || o.label || 'opt'),
+        label: String(o.label || o.id || 'Option'),
+        description: String(o.description || ''),
+        split_dimension: String(o.split_dimension || 'type'),
+        confidence: Number(o.confidence || 0.8)
+      }));
+
+      return res.status(200).json({
+        mode: 'llm',
+        step: { level0, path_labels: [] },
+        options
+      });
+    } catch (e) {
+      const out = stub(level0, selPath);
+      out.warnings = ['Stub fallback active. (exception)'];
+      return res.status(200).json(out);
     }
-
-  const text = (data.output || [])
-      .flatMap(o => o.content || [])
-      .map(c => {
-        // Responses API commonly uses { type: "output_text", text: "..." }
-        if (typeof c?.text === "string") return c.text;
-        if (typeof c?.output_text === "string") return c.output_text;
-        // Some SDKs wrap text in { type:"output_text", text:"..." }
-        if (c?.type === "output_text" && typeof c?.text === "string") return c.text;
-        return "";
-      })
-      .join("");
-
-  try {
-    const parsed = JSON.parse(text);
-    const options = (parsed.options || []).slice(0, maxOptions).map(o => ({
-      id: o.id || (o.label ? o.label.toLowerCase().replace(/\s+/g, "-") : "option"),
-      label: o.label || "Option",
-      description: o.description || "",
-      split_dimension: o.split_dimension || "general",
-      confidence: Number(o.confidence) || 0.5
-    }));
-
-    if (!options.length) return { __openai_error: 'empty_options' };
-
-    return {
-      mode: "llm",
-      step: { level0, path_labels: path.map(p => p.label) },
-      options,
-      buckets: [{ label: "All options", option_ids: options.map(o => o.id) }],
-      can_confirm_here: path.length >= 2,
-      confirm_reason: "Review selection.",
-      warnings: []
-    };
-  } catch (e) {
-    console.log("Model text not pure JSON", text.slice(0, 200));
-    return null;
-  }
-}
-
-// -------- API --------
-
-async function fetchLLMWithRetry(level0, path, maxOptions) {
-  const first = await fetchLLM(level0, path, maxOptions);
-  if (first && !first.__openai_error) return first;
-  await sleep(250);
-  const second = await fetchLLM(level0, path, maxOptions);
-  if (second && !second.__openai_error) return second;
-  return (second && second.__openai_error) ? second : first;
-}
-
-exports.api = functions.https.onRequest(async (req,res)=>{
-  res.set("Access-Control-Allow-Origin","*");
-  if(req.method==="OPTIONS") return res.status(204).send("");
-
-  const pth = req.path || "";
-    const ok = (pth === "/next-options" || pth === "/api/next-options");
-    if (!ok) return res.status(404).json({ error: "Not found" });
-const level0=req.body.level0;
-  if(!ALLOWED_LEVEL0.has(level0)) return res.status(400).json({error:"bad level0"});
-
-  const path=Array.isArray(req.body.path)?req.body.path:[];
-  const maxOptions=Math.min(Number(req.body.max_options)||DEFAULT_TARGET_OPTIONS,MAX_OPTIONS_LIMIT);
-
-  const key=cacheKey(level0,path);
-  const cached=getCached(key);
-  if(cached){
-    cached.meta={cache_hit:true, build: BUILD_STAMP};
-    return res.json(cached);
   }
 
-  let out = await fetchLLM(level0,path,maxOptions);
-  if(!out) out=stub(level0,path);
-
-  setCached(key,out);
-  out.meta={cache_hit:false, build: BUILD_STAMP};
-  res.json(out);
+  res.status(404).json({ error: 'not_found' });
 });
