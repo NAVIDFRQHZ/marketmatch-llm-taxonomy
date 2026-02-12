@@ -49,7 +49,8 @@ async function callOpenAI(prompt) {
   const url = 'https://api.openai.com/v1/responses';
   const body = {
     model,
-    input: prompt
+    input: prompt,
+    response_format: { type: 'json_object' }
   };
 
   const res = await fetch(url, {
