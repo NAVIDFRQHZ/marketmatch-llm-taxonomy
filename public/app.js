@@ -1,3 +1,15 @@
+const APP_BUILD_STAMP = '2026-02-12T15:59:24Z';
+console.log('[app_build]', APP_BUILD_STAMP);
+
+
+function isAbortError(error) {
+  const name = String(error?.name || '');
+  const message = String(error?.message || '');
+  return name === 'AbortError'
+    || message.includes('AbortError')
+    || message.includes('signal is aborted');
+}
+
 
 // Keep a single controller for the latest in-flight request
 let currentFetchController = null;
@@ -29,6 +41,11 @@ function updateResetVisibility() {
 }
 
 function resetToLevel0() {
+  if (activeRequestController) {
+    activeRequestController.abort();
+    activeRequestController = null;
+  }
+
   state.level0 = null;
   state.path = [];
   state.options = [];
