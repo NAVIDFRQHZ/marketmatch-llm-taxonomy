@@ -25,7 +25,8 @@ const state = {
   pathLabels: [],    // for display
   lastResponse: null,
   page: 0,
-  excludeIds: []
+  excludeIds: [],
+  loading: false
 };
 
 // ----- Request control (THIS IS THE IMPORTANT PART)
@@ -37,6 +38,19 @@ function setStatus(msg, kind = '') {
   elStatus.textContent = msg || '';
   elStatus.className = 'status' + (kind ? ` ${kind}` : '');
 }
+
+
+function setLoading(isLoading, message) {
+  state.loading = !!isLoading;
+  // Disable actions while loading
+  btnBack.disabled = isLoading || state.path.length === 0;
+  btnMore.disabled = isLoading || !state.level0;
+  btnConfirm.disabled = isLoading || !state.level0;
+  // Disable option clicks while loading
+  elOptions.style.pointerEvents = isLoading ? 'none' : 'auto';
+  if (message) setStatus(message);
+}
+
 
 function isAbortError(err) {
   const name = String(err?.name || '');
@@ -70,9 +84,9 @@ function render() {
   }
 
   elPath.textContent = state.pathLabels.length ? state.pathLabels.join(' → ') : '(none)';
-  btnBack.disabled = state.path.length === 0;
-  btnConfirm.disabled = !state.level0;
-  btnMore.disabled = !state.level0;
+  btnBack.disabled = state.loading || state.path.length === 0;
+  btnConfirm.disabled = state.loading || !state.level0;
+  btnMore.disabled = state.loading || !state.level0;
 
   showReset(!!state.level0);
 }
@@ -89,9 +103,10 @@ function resetAll() {
   state.lastResponse = null;
   state.page = 0;
   state.excludeIds = [];
+  state.loading = false;
   elOptions.innerHTML = '';
   elMeta.textContent = '';
-  setStatus('');
+  setLoading(false, '');
   render();
 }
 
@@ -106,12 +121,15 @@ function resetToLevel0() {
   state.lastResponse = null;
   state.page = 0;
   state.excludeIds = [];
+  state.loading = false;
   elOptions.innerHTML = '';
   elMeta.textContent = '';
   setStatus('');
   state.page = 0;
   state.excludeIds = [];
-  requestNext();
+  elOptions.innerHTML = '';
+  setLoading(true, 'Loading previous level…');
+  requestNext(false);
   render();
 }
 
@@ -123,13 +141,16 @@ btnBack.onclick = () => {
   state.pathLabels.pop();
   state.page = 0;
   state.excludeIds = [];
-  requestNext();
+  elOptions.innerHTML = '';
+  setLoading(true, 'Loading previous level…');
+  requestNext(false);
   render();
 };
 
 btnMore.onclick = () => {
   if (!state.level0) return;
   state.page = (state.page || 0) + 1;
+  setLoading(true, 'Loading more…');
   requestNext(true);
 };
 
@@ -153,7 +174,7 @@ async function requestNext(append = false) {
   const controller = new AbortController();
   activeController = controller;
 
-  setStatus('Loading…');
+  setLoading(true, append ? 'Loading more…' : 'Loading next level…');
 
   const payload = { level0: state.level0, path: state.path, max_options: 10, page: state.page || 0, exclude_ids: state.excludeIds || [] };
 
@@ -218,9 +239,11 @@ async function requestNext(append = false) {
     if (isAbortError(err) || controller.signal.aborted || seq !== requestSeq) return;
 
     console.error('requestNext failed:', err);
+    setLoading(false, '');
     setStatus('Unable to load options. Please try again.', 'error');
   } finally {
     if (activeController === controller) activeController = null;
+    if (state.loading) setLoading(false, '');
   }
 }
 
