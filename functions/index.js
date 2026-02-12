@@ -4,6 +4,8 @@ require('dotenv').config({ path: path.join(__dirname, '.env'), override: true })
 require('dotenv').config({ path: path.join(__dirname, '.secret.local'), override: true });
 // (dotenv) Never log secrets. You can log booleans for debugging:
 console.log('[env] has OPENAI_API_KEY?', Boolean(process.env.OPENAI_API_KEY));
+
+const BUILD_STAMP = '17494be';
 console.log('[env] OPENAI_MODEL=', process.env.OPENAI_MODEL || '(default)');
 
 
@@ -200,7 +202,7 @@ const level0=req.body.level0;
   const key=cacheKey(level0,path);
   const cached=getCached(key);
   if(cached){
-    cached.meta={cache_hit:true};
+    cached.meta={cache_hit:true, build: BUILD_STAMP};
     return res.json(cached);
   }
 
@@ -208,6 +210,6 @@ const level0=req.body.level0;
   if(!out) out=stub(level0,path);
 
   setCached(key,out);
-  out.meta={cache_hit:false};
+  out.meta={cache_hit:false, build: BUILD_STAMP};
   res.json(out);
 });
