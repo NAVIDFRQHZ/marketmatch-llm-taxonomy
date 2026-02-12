@@ -16,6 +16,7 @@ function stub(level0, path) {
   return {
     mode: 'stub',
     meta: { build: FUNC_BUILD_STAMP },
+    warnings: ['Stub fallback active.'],
     step: { level0, path_labels: [] },
     options,
     warnings: ['Stub fallback active.']
@@ -104,7 +105,7 @@ exports.api = functions.https.onRequest(async (req, res) => {
       const resp = await callOpenAI(prompt);
       if (!resp.ok) {
         const out = stub(level0, selPath);
-        out.warnings = [`Stub fallback active. (${resp.error})`];
+        out.warnings = [`Stub fallback active. (${resp.error})` + (resp.raw ? ` | ${String(resp.raw).slice(0,120)}` : '')];
         return res.status(200).json(out);
       }
 
