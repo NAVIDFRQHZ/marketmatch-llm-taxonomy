@@ -9,6 +9,7 @@ const elOptions = document.getElementById('options');
 const elMeta = document.getElementById('meta');
 const btnBack = document.getElementById('backBtn');
 const btnConfirm = document.getElementById('confirmBtn');
+const btnMore = document.getElementById('moreBtn');
 const btnReset = document.getElementById('resetBtn');
 
 const LEVEL0_CHOICES = [
@@ -22,7 +23,9 @@ const state = {
   level0: null,
   path: [],          // array of selected option ids (or labels), sent to backend
   pathLabels: [],    // for display
-  lastResponse: null
+  lastResponse: null,
+  page: 0,
+  excludeIds: []
 };
 
 // ----- Request control (THIS IS THE IMPORTANT PART)
@@ -56,7 +59,11 @@ function render() {
       if (state.level0 === c.id) return;
       resetAll();
       state.level0 = c.id;
-      requestNext();
+      state.page = 0;
+  state.excludeIds = [];
+  state.page = 0;
+  state.excludeIds = [];
+  requestNext();
       render();
     };
     elLevel0.appendChild(b);
@@ -65,6 +72,7 @@ function render() {
   elPath.textContent = state.pathLabels.length ? state.pathLabels.join(' → ') : '(none)';
   btnBack.disabled = state.path.length === 0;
   btnConfirm.disabled = !state.level0;
+  btnMore.disabled = !state.level0;
 
   showReset(!!state.level0);
 }
@@ -79,6 +87,8 @@ function resetAll() {
   state.path = [];
   state.pathLabels = [];
   state.lastResponse = null;
+  state.page = 0;
+  state.excludeIds = [];
   elOptions.innerHTML = '';
   elMeta.textContent = '';
   setStatus('');
@@ -94,9 +104,13 @@ function resetToLevel0() {
   state.path = [];
   state.pathLabels = [];
   state.lastResponse = null;
+  state.page = 0;
+  state.excludeIds = [];
   elOptions.innerHTML = '';
   elMeta.textContent = '';
   setStatus('');
+  state.page = 0;
+  state.excludeIds = [];
   requestNext();
   render();
 }
@@ -107,8 +121,16 @@ btnBack.onclick = () => {
   if (state.path.length === 0) return;
   state.path.pop();
   state.pathLabels.pop();
+  state.page = 0;
+  state.excludeIds = [];
   requestNext();
   render();
+};
+
+btnMore.onclick = () => {
+  if (!state.level0) return;
+  state.page = (state.page || 0) + 1;
+  requestNext(true);
 };
 
 btnConfirm.onclick = async () => {
@@ -119,7 +141,7 @@ btnConfirm.onclick = async () => {
 };
 
 // ----- Core request
-async function requestNext() {
+async function requestNext(append = false) {
   if (!state.level0) return;
 
   const seq = ++requestSeq;
@@ -133,7 +155,7 @@ async function requestNext() {
 
   setStatus('Loading…');
 
-  const payload = { level0: state.level0, path: state.path, max_options: 10 };
+  const payload = { level0: state.level0, path: state.path, max_options: 10, page: state.page || 0, exclude_ids: state.excludeIds || [] };
 
   try {
     const r = await fetch('/api/next-options', {
@@ -158,17 +180,28 @@ async function requestNext() {
 
     // render options
     const opts = Array.isArray(data.options) ? data.options : [];
-    elOptions.innerHTML = '';
+    if (!append) elOptions.innerHTML = '';
     for (const o of opts) {
       const div = document.createElement('div');
       div.className = 'opt';
       div.innerHTML = `<div class="name">${escapeHtml(o.label || o.id || 'Option')}</div>
                        <div class="desc">${escapeHtml(o.description || '')}</div>`;
+      // track seen ids/labels so Load more doesn't repeat
+      state.excludeIds = Array.isArray(state.excludeIds) ? state.excludeIds : [];
+      const sid = String(o.id || '').trim();
+      const slb = String(o.label || '').trim();
+      if (sid) state.excludeIds.push(sid);
+      if (slb) state.excludeIds.push(slb);
+
       div.onclick = () => {
         // Selecting an option pushes deeper
         state.path.push(String(o.id || o.label));
+        state.page = 0;
+        state.excludeIds = [];
         state.pathLabels.push(String(o.label || o.id));
-        requestNext();
+        state.page = 0;
+  state.excludeIds = [];
+  requestNext();
         render();
       };
       elOptions.appendChild(div);

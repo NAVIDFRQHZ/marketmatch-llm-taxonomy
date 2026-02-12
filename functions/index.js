@@ -108,15 +108,21 @@ exports.api = functions.https.onRequest(async (req, res) => {
 
   const path = req.path || '';
   if (req.method === 'POST' && path.endsWith('/next-options')) {
-    const { level0, path: selPath, max_options } = req.body || {};
+    const { level0, path: selPath, max_options, exclude_ids, page } = req.body || {};
     const depth = Array.isArray(selPath) ? selPath.length : 0;
 
-    const prompt = [
+      const exclude = Array.isArray(exclude_ids) ? exclude_ids.map(String) : [];
+      const pg = Number(page || 0);
+
+      const prompt = [
+
       'You are a taxonomy generator.',
       'Return STRICT JSON ONLY (no markdown).',
       'Schema: {"options":[{"id":string,"label":string,"description":string,"split_dimension":string,"confidence":number}]}',
       `Level0: ${level0}`,
       `Current path: ${(selPath || []).join(' > ')}`,
+      `Page: ${pg}`,
+      (exclude.length ? `Exclude these ids/labels exactly (do not repeat): ${exclude.join(' | ')}` : `Exclude: (none)`),
       `Generate up to ${Math.min(Number(max_options)||10, 12)} next subcategories for the next drill step.`,
       'Be concrete, avoid duplicates, keep labels short.'
     ].join('\n');
@@ -146,11 +152,23 @@ exports.api = functions.https.onRequest(async (req, res) => {
         confidence: Number(o.confidence || 0.8)
       }));
 
+
+      const excludeSet = new Set((Array.isArray(exclude_ids) ? exclude_ids : []).map((x) => String(x).toLowerCase()));
+      const seen = new Set();
+      const filtered = [];
+      for (const o of options) {
+        const key = (String(o.id).toLowerCase() + '|' + String(o.label).toLowerCase());
+        if (excludeSet.has(String(o.id).toLowerCase()) || excludeSet.has(String(o.label).toLowerCase())) continue;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        filtered.push(o);
+      }
+
       return res.status(200).json({
         mode: 'llm',
         meta: { build: FUNC_BUILD_STAMP },
         step: { level0, path_labels: [] },
-        options
+        options: filtered
       });
     } catch (e) {
       const out = stub(level0, selPath);
