@@ -1,3 +1,4 @@
+const FUNC_BUILD_STAMP = 'FUNC_BUILD_STAMP_20260212-165911';
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 admin.initializeApp();
@@ -14,6 +15,7 @@ function stub(level0, path) {
   }));
   return {
     mode: 'stub',
+    meta: { build: FUNC_BUILD_STAMP },
     step: { level0, path_labels: [] },
     options,
     warnings: ['Stub fallback active.']
@@ -77,6 +79,7 @@ async function callOpenAI(prompt) {
 }
 
 exports.api = functions.https.onRequest(async (req, res) => {
+  console.log('[build]', FUNC_BUILD_STAMP);
   // CORS for simple hosting calls
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Headers', 'Content-Type');
@@ -123,6 +126,7 @@ exports.api = functions.https.onRequest(async (req, res) => {
 
       return res.status(200).json({
         mode: 'llm',
+        meta: { build: FUNC_BUILD_STAMP },
         step: { level0, path_labels: [] },
         options
       });
