@@ -5,7 +5,7 @@ require('dotenv').config({ path: path.join(__dirname, '.secret.local'), override
 // (dotenv) Never log secrets. You can log booleans for debugging:
 console.log('[env] has OPENAI_API_KEY?', Boolean(process.env.OPENAI_API_KEY));
 
-const BUILD_STAMP = 'llmfix-001';
+const BUILD_STAMP = 'llmfix-002';
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
