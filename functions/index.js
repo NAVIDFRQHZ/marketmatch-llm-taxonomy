@@ -59,7 +59,8 @@ function generateStubOptions(level0, path, maxOptions) {
 
 // -------- OPENAI CALL --------
 async function fetchLLM(level0, path, maxOptions) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const cfg = (typeof functions.config === 'function') ? (functions.config() || {}) : {};
+  const apiKey = process.env.OPENAI_API_KEY || (cfg.openai && cfg.openai.key) || '';
   // Safe fingerprint (does NOT reveal full key)
   console.log("[env] key_fingerprint", {
     prefix: (apiKey || "").slice(0, 7),
@@ -85,7 +86,7 @@ Schema:
 `;
 
   const payload = JSON.stringify({
-    model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+    model: process.env.OPENAI_MODEL || (cfg.openai && cfg.openai.model) || "gpt-4.1-mini",
     input: prompt,
     // Force JSON-only output in Responses API
     text: { format: { type: "json_object" } },
