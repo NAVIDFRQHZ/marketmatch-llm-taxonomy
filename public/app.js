@@ -1,3 +1,8 @@
+
+// Keep a single controller for the latest in-flight request
+let currentFetchController = null;
+let currentFetchSeq = 0;
+
 const level0Choices = document.getElementById('level0-choices');
 const drilldownCard = document.getElementById('drilldown-card');
 const optionsContainer = document.getElementById('options-container');
@@ -132,6 +137,20 @@ function fetchWithTimeout(url, opts, ms=12000) {
 }
 
 async function fetchOptions() {
+  // sequence guard so older responses can't overwrite UI
+  const seq = ++currentFetchSeq;
+
+  // abort previous in-flight request (normal on fast clicks)
+  if (currentFetchController) { try { currentFetchController.abort(); } catch (_) {
+    // IMPORTANT: ignore expected aborts from AbortController
+    if (_ && (_.name === 'AbortError' || String(_).includes('AbortError'))) {
+      return;
+    }
+} }
+  currentFetchController = new AbortController();
+  const { signal } = currentFetchController;
+
+
   setStatus('Loading options…');
   optionsContainer.innerHTML = '';
   try {
@@ -162,7 +181,9 @@ async function fetchOptions() {
     console.error(e);
     setStatus('Unable to load options. Please try again.', true);
   }
+
 }
+
 
 backButton.addEventListener('click', () => {
   if (!state.path.length) return;
